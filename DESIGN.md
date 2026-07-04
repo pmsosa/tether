@@ -1,11 +1,11 @@
-# ADBBrowser — Design Document
+# Tether — Design Document
 
 A small macOS menu-bar utility that detects Android devices over ADB (USB or
 WiFi) and mounts their filesystem so it can be browsed and edited in Finder.
 
 - **Author:** Pedro
 - **License:** BSD-3-Clause
-- **Status:** Design — not yet implemented
+- **Status:** Implemented (phases 1–4) — verified end-to-end on a real device
 
 ---
 
@@ -45,7 +45,7 @@ WiFi) and mounts their filesystem so it can be browsed and edited in Finder.
 ### Menu-bar menu
 
 ```
- ●  ADBBrowser
+ ●  Tether
  ────────────────────────────
   Devices
     Pixel 8 (USB)              ⌢ Mount
@@ -87,7 +87,7 @@ Native macOS app, Swift + SwiftUI, running as a menu-bar-only agent.
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│ ADBBrowser.app  (LSUIElement, no Dock icon)                │
+│ Tether.app  (LSUIElement, no Dock icon)                    │
 │                                                            │
 │  ┌──────────────┐   ┌───────────────┐   ┌───────────────┐  │
 │  │ MenuBarExtra │──▶│  AppState     │──▶│  DeviceStore  │  │
@@ -119,7 +119,7 @@ and a small amount of shared configuration (device serial, scope).
 - **DeviceStore** — the current list of `Device` values, diffed on each scan so
   the menu only re-renders on real changes.
 - **MountManager** — owns the lifecycle of each mount: allocate a mount point
-  under `~/ADBBrowser/<device>/`, start the bridge, wait until the volume is
+  under `~/Tether/<device>/`, start the bridge, wait until the volume is
   ready, reveal in Finder, and tear it down on unmount/quit.
 - **AppState** — orchestrates the poll timer, wires actions to managers, and is
   the single `ObservableObject` the menu binds to.
@@ -165,9 +165,15 @@ kext, no third-party package, and no Apple File System Extension entitlement.
 
 - A tiny HTTP/1.1 + WebDAV server (`WebDAVServer` / `DAVConnection`, built on the
   `Network` framework) binds to an ephemeral **loopback-only** port.
+- **Volume-aware root:** the volume root is *not* `/sdcard`. `/sdcard` is only a
+  symlink to internal storage and hides removable cards. Instead the server
+  presents a synthetic root listing every storage volume — **Internal storage**
+  (`/storage/emulated/0`) and each removable card / USB drive (`/storage/<id>`,
+  discovered via `ls /storage`). The first path segment selects the volume; the
+  rest maps to that volume's device path.
 - WebDAV verbs map to `adb -s <serial>` commands:
   - **PROPFIND** (dir listing / stat) → `adb shell ls -laL` (`-L` dereferences
-    the `/sdcard` symlink so the root browses correctly).
+    symlinks so directories browse correctly).
   - **GET** → `adb exec-out cat <path>`.
   - **PUT** → write body to a temp file, `adb push`.
   - **MKCOL / DELETE / MOVE / COPY** → `mkdir` / `rm -rf` / `mv` / `cp -r`.
@@ -275,7 +281,7 @@ The `adb` check is cheap and runs at launch and before the first mount.
 
 Exactly:
 
-> **ADBBrowser**
+> **Tether**
 > Made by Pedro · 2026 · BSD-3-Clause
 
 (Rendered from build metadata; year/date pulled at build time.)
@@ -305,10 +311,11 @@ mounts a device's `/sdcard` into Finder with working read/write/delete.
 - **WebDAV client quirks:** macOS caching and occasional "resource busy" on
   unmount (handled with a `diskutil unmount force` fallback); watch for edge
   cases with unusual filenames / very large directories.
-- **Scope beyond `/sdcard`:** root-only paths are inaccessible on non-rooted
-  phones; consider a scope picker later.
+- **Scope:** the synthetic root exposes all `/storage` volumes (internal + SD /
+  USB). Paths that need root (outside `/storage`) remain inaccessible on
+  non-rooted phones — expected.
 - **Multiple devices / same model:** disambiguation in the menu and mount paths.
-- **App name:** shipping as **Tether** (rename is one variable in `build.sh`
-  plus the `Sources/Tether` dir). Confirm or change.
+- **App name:** **Tether** (settled). Note the project *directory* is still
+  `ADBBrowser` — rename the folder if you want it to match.
 - **Icon + notarization:** add `build/AppIcon.icns` and run `./build.sh --sign`.
 ```
