@@ -6,7 +6,11 @@ import Network
 /// Binds to loopback only and serves one request per connection.
 final class WebDAVServer {
     let adb: AdbClient
-    let root: String            // device path exposed as the volume root, e.g. "/sdcard"
+
+    // Storage volumes shown at the root, and a name→device-path lookup for the
+    // first path segment. Populated on start().
+    private var volumes: [StorageVolume] = []
+    private var volumeMap: [String: String] = [:]
 
     private var listener: NWListener?
     private let controlQueue = DispatchQueue(label: "tether.webdav.control")
@@ -20,15 +24,17 @@ final class WebDAVServer {
     func retain(_ c: DAVConnection) { connections[ObjectIdentifier(c)] = c }
     func release(_ c: DAVConnection) { connections.removeValue(forKey: ObjectIdentifier(c)) }
 
-    init(adbPath: String, serial: String, rootPath: String) {
+    init(adbPath: String, serial: String) {
         self.adb = AdbClient(adbPath: adbPath, serial: serial)
-        self.root = rootPath
     }
 
     // MARK: Lifecycle
 
     /// Starts the listener on an ephemeral loopback port. Blocks until ready.
     func start() throws -> UInt16 {
+        volumes = adb.discoverVolumes()
+        volumeMap = Dictionary(volumes.map { ($0.name, $0.path) }, uniquingKeysWith: { a, _ in a })
+
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
         params.requiredLocalEndpoint = NWEndpoint.hostPort(
@@ -82,33 +88,56 @@ final class WebDAVServer {
     }
 
     private func route(_ req: DAVRequest) -> DAVResponse {
-        let devicePath = mapToDevice(req.path)
+        let resolved = resolve(req.path)
         switch req.method {
         case "OPTIONS": return options()
-        case "PROPFIND": return propfind(req, devicePath: devicePath)
+        case "PROPFIND": return propfind(req, resolved: resolved)
+        case "LOCK": return lock(req)
+        case "UNLOCK": return .status(204)
+        default: break
+        }
+
+        // Everything below operates on a concrete device path; the synthetic
+        // root is read-only.
+        guard case .device(let devicePath) = resolved else {
+            return req.method == "PROPPATCH" ? proppatch(req) : .status(403)
+        }
+
+        switch req.method {
         case "GET", "HEAD": return get(req, devicePath: devicePath, includeBody: req.method == "GET")
         case "PUT": return put(req, devicePath: devicePath)
         case "MKCOL": return adb.mkdir(devicePath) ? .status(201) : .status(409)
         case "DELETE": return adb.remove(devicePath) ? .status(204) : .status(404)
         case "MOVE": return moveOrCopy(req, from: devicePath, copy: false)
         case "COPY": return moveOrCopy(req, from: devicePath, copy: true)
-        case "LOCK": return lock(req)
-        case "UNLOCK": return .status(204)
-        case "PROPPATCH": return proppatch(req, devicePath: devicePath)
+        case "PROPPATCH": return proppatch(req)
         default: return .status(405)
         }
     }
 
     // MARK: Path mapping
 
-    /// Map a WebDAV request path onto a device path under `root`.
-    private func mapToDevice(_ webPath: String) -> String {
+    /// Where a WebDAV path points: the synthetic volume-list root, or a concrete
+    /// device path inside one of the volumes.
+    private enum Resolved {
+        case root
+        case device(String)
+    }
+
+    /// Resolve a WebDAV request path. The first path segment selects a volume
+    /// (e.g. "Internal storage"); the remainder is appended to its device path.
+    private func resolve(_ webPath: String) -> Resolved {
         var p = webPath
         if let q = p.firstIndex(of: "?") { p = String(p[..<q]) }
         p = p.removingPercentEncoding ?? p
-        while p.hasPrefix("/") { p.removeFirst() }
-        while p.hasSuffix("/") { p.removeLast() }
-        return p.isEmpty ? root : "\(root)/\(p)"
+        let comps = p.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        guard let first = comps.first else { return .root }
+        guard let base = volumeMap[first] else {
+            // Unknown top-level name (e.g. Finder's .DS_Store probe) → 404.
+            return .device("/storage/__unknown__/" + comps.joined(separator: "/"))
+        }
+        let rest = comps.dropFirst().joined(separator: "/")
+        return .device(rest.isEmpty ? base : "\(base)/\(rest)")
     }
 
     // MARK: Verb handlers
@@ -145,7 +174,9 @@ final class WebDAVServer {
 
     private func moveOrCopy(_ req: DAVRequest, from: String, copy: Bool) -> DAVResponse {
         guard let dest = req.headers["destination"] else { return .status(400) }
-        let destPath = mapToDevice(destinationPath(dest))
+        guard case .device(let destPath) = resolve(destinationPath(dest)) else {
+            return .status(403) // can't move/copy onto the synthetic root
+        }
         let ok = copy ? adb.copy(from, to: destPath) : adb.move(from, to: destPath)
         return ok ? .status(201) : .status(409)
     }
@@ -178,7 +209,7 @@ final class WebDAVServer {
         ], body: Data(xml.utf8))
     }
 
-    private func proppatch(_ req: DAVRequest, devicePath: String) -> DAVResponse {
+    private func proppatch(_ req: DAVRequest) -> DAVResponse {
         // Accept and ignore property writes (Finder sets timestamps, etc.).
         let href = xmlEscape(req.path)
         let xml = """
@@ -192,17 +223,37 @@ final class WebDAVServer {
         ], body: Data(xml.utf8))
     }
 
-    private func propfind(_ req: DAVRequest, devicePath: String) -> DAVResponse {
-        guard let selfEntry = adb.stat(devicePath) else { return .status(404) }
-
+    private func propfind(_ req: DAVRequest, resolved: Resolved) -> DAVResponse {
         let depth = req.headers["depth"] ?? "1"
-        var responses = [responseXML(href: req.path, entry: selfEntry, isSelf: true)]
+        var responses: [String]
 
-        if selfEntry.isDir && depth != "0" {
-            let baseHref = req.path.hasSuffix("/") ? req.path : req.path + "/"
-            for child in adb.list(devicePath) {
-                let childHref = baseHref + percentEncode(child.name)
-                responses.append(responseXML(href: childHref, entry: child, isSelf: false))
+        switch resolved {
+        case .root:
+            let epoch = Date(timeIntervalSince1970: 0)
+            let rootEntry = RemoteEntry(name: "", isDir: true, size: 0, modified: epoch)
+            responses = [responseXML(href: req.path, entry: rootEntry, isSelf: true)]
+            if depth != "0" {
+                let baseHref = req.path.hasSuffix("/") ? req.path : req.path + "/"
+                for volume in volumes {
+                    let stat = adb.stat(volume.path)
+                    let entry = RemoteEntry(
+                        name: volume.name,
+                        isDir: true,
+                        size: stat?.size ?? 0,
+                        modified: stat?.modified ?? epoch
+                    )
+                    responses.append(responseXML(href: baseHref + percentEncode(volume.name), entry: entry, isSelf: false))
+                }
+            }
+
+        case .device(let devicePath):
+            guard let selfEntry = adb.stat(devicePath) else { return .status(404) }
+            responses = [responseXML(href: req.path, entry: selfEntry, isSelf: true)]
+            if selfEntry.isDir && depth != "0" {
+                let baseHref = req.path.hasSuffix("/") ? req.path : req.path + "/"
+                for child in adb.list(devicePath) {
+                    responses.append(responseXML(href: baseHref + percentEncode(child.name), entry: child, isSelf: false))
+                }
             }
         }
 

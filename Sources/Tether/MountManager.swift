@@ -11,16 +11,13 @@ final class MountManager {
 
     private var mounts: [String: Mount] = [:]
 
-    /// The device path exposed as the volume root.
-    private let rootPath = "/sdcard"
-
     func mountPoint(for serial: String) -> URL? { mounts[serial]?.mountPoint }
 
     /// Mount a device and return the local mount point URL.
     func mount(device: Device, adbPath: String) async throws -> URL {
         if let existing = mounts[device.serial] { return existing.mountPoint }
 
-        let server = WebDAVServer(adbPath: adbPath, serial: device.serial, rootPath: rootPath)
+        let server = WebDAVServer(adbPath: adbPath, serial: device.serial)
         let port = try await Task.detached { try server.start() }.value
 
         let name = Self.sanitize(device.displayName)

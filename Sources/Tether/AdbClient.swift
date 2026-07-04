@@ -8,6 +8,13 @@ struct RemoteEntry {
     let modified: Date
 }
 
+/// A top-level storage volume on the device (internal storage or a removable
+/// card), presented as a folder at the root of the mounted volume.
+struct StorageVolume {
+    let name: String   // friendly name shown in Finder
+    let path: String   // device path, e.g. /storage/emulated/0
+}
+
 /// Thin wrapper over the `adb` binary. All calls are blocking; run them off the
 /// main thread. Instances are cheap value types keyed by an adb path + serial.
 struct AdbClient {
@@ -79,6 +86,24 @@ struct AdbClient {
     /// Run a shell command on the device, returning stdout bytes.
     func shell(_ command: String) -> ProcessResult {
         ProcessRunner.run(adbPath, base + ["shell", command])
+    }
+
+    /// Discover the device's storage volumes. Internal storage is
+    /// `/storage/emulated/0`; removable cards / USB drives appear as sibling
+    /// entries under `/storage` (named by their volume id). `/sdcard` is just a
+    /// symlink to internal storage, which is why it doesn't show the card.
+    func discoverVolumes() -> [StorageVolume] {
+        let internalVolume = StorageVolume(name: "Internal storage", path: "/storage/emulated/0")
+        var others: [StorageVolume] = []
+        let result = shell("ls --color=never /storage")
+        if result.ok {
+            for raw in result.outString.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
+                let entry = raw.trimmingCharacters(in: .whitespaces)
+                if entry.isEmpty || entry == "self" || entry == "emulated" { continue }
+                others.append(StorageVolume(name: "SD Card (\(entry))", path: "/storage/\(entry)"))
+            }
+        }
+        return [internalVolume] + others
     }
 
     /// Stat a single path (the entry itself, via `ls -lad`).
