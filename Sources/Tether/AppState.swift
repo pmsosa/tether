@@ -18,6 +18,10 @@ final class AppState: ObservableObject {
     private static let autoDetectKey = "autoDetect"
     private static let pollInterval: TimeInterval = 4
 
+    /// Weak shared reference so the app delegate can reach the live state for
+    /// graceful termination without SwiftUI wiring-order issues.
+    static weak var shared: AppState?
+
     private let mountManager = MountManager()
     private var timer: Timer?
     private var scanning = false
@@ -32,9 +36,22 @@ final class AppState: ObservableObject {
         } else {
             autoDetect = UserDefaults.standard.bool(forKey: Self.autoDetectKey)
         }
+        // Clean up any volumes left mounted by a previous unclean exit
+        // (crash / kill -9 / power loss) before we do anything else.
+        MountManager.sweepStaleMounts()
+        Self.shared = self
         adbPath = AdbLocator.locate()
         if autoDetect { startTimer() }
         Task { await refresh() }
+    }
+
+    /// Whether any device is currently mounted (used by the app delegate to
+    /// decide if termination must wait for unmounting).
+    var hasMounts: Bool { mountManager.hasMounts }
+
+    /// Unmount everything (graceful path shared by Quit and system termination).
+    func unmountAll() async {
+        await mountManager.unmountAll()
     }
 
     // MARK: Discovery
@@ -93,10 +110,9 @@ final class AppState: ObservableObject {
     }
 
     func quit() {
-        Task {
-            await mountManager.unmountAll()
-            NSApp.terminate(nil)
-        }
+        // Routes through AppDelegate.applicationShouldTerminate, which unmounts
+        // everything before the app exits.
+        NSApp.terminate(nil)
     }
 
     // MARK: Timer

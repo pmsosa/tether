@@ -2,5 +2,9 @@
 dist/
 *.xcodeproj
 .DS_Store
+
+# Local Apple signing credentials sourced by build.sh — never commit
+.env
+
 build/*.entitlements
 build/embedded.provisionprofile

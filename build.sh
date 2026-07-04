@@ -59,7 +59,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-BUNDLE_ID="com.pedro.tether"
+BUNDLE_ID="com.pmsosa.tether"
 PRODUCT_NAME="Tether"
 VERSION_FILE="$(pwd)/VERSION"
 VERSION="$(cat "$VERSION_FILE" 2>/dev/null | tr -d '[:space:]')"

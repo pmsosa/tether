@@ -11,6 +11,8 @@ final class MountManager {
 
     private var mounts: [String: Mount] = [:]
 
+    var hasMounts: Bool { !mounts.isEmpty }
+
     func mountPoint(for serial: String) -> URL? { mounts[serial]?.mountPoint }
 
     /// Mount a device and return the local mount point URL.
@@ -60,9 +62,34 @@ final class MountManager {
         }
     }
 
+    /// Force-unmount every Tether volume and remove leftover mount-point dirs by
+    /// inspecting the filesystem — no dependency on `mounts` state. Safe to call
+    /// from a signal handler or at startup to clean up after an unclean exit
+    /// (crash, `kill -9`, power loss) where graceful unmount never ran.
+    ///
+    /// `nonisolated` and synchronous so it can run from a signal handler.
+    nonisolated static func sweepStaleMounts() {
+        let base = mountBase()
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        ) else { return }
+
+        let mountTable = ProcessRunner.run("/sbin/mount", []).outString
+        for dir in entries {
+            let path = dir.path
+            if mountTable.contains(path) {
+                _ = ProcessRunner.run("/usr/sbin/diskutil", ["unmount", "force", path])
+            }
+            // rmdir only removes empty directories, so a still-mounted or
+            // non-empty path is left untouched rather than recursively deleted.
+            _ = rmdir(path)
+        }
+    }
+
     // MARK: Helpers
 
-    private static func mountBase() -> URL {
+    private nonisolated static func mountBase() -> URL {
         URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Tether")
     }
 

@@ -9,12 +9,16 @@ struct AboutView: View {
             Text("Tether")
                 .font(.title2.bold())
             VStack(spacing: 2) {
-                Text("Made by Pedro")
+                Text("Made by Pedro Sosa")
                 Text("2026")
                 Text("BSD-3-Clause License")
             }
             .font(.callout)
             .foregroundStyle(.secondary)
+
+            Link("konukoii.com", destination: URL(string: "https://konukoii.com")!)
+                .font(.callout)
+                .padding(.top, 2)
         }
         .padding(32)
         .frame(width: 280)

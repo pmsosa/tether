@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct TetherApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState()
 
     var body: some Scene {

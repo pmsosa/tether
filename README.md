@@ -39,4 +39,4 @@ Developer-ID-signed, notarized DMG.
 
 ## License
 
-BSD-3-Clause — see [LICENSE](LICENSE). Made by Pedro.
+BSD-3-Clause — see [LICENSE](LICENSE). Made by Pedro M. Sosa.

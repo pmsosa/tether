@@ -3,7 +3,7 @@
 A small macOS menu-bar utility that detects Android devices over ADB (USB or
 WiFi) and mounts their filesystem so it can be browsed and edited in Finder.
 
-- **Author:** Pedro
+- **Author:** Pedro M. Sosa
 - **License:** BSD-3-Clause
 - **Status:** Implemented (phases 1–4) — verified end-to-end on a real device
 
@@ -16,7 +16,7 @@ WiFi) and mounts their filesystem so it can be browsed and edited in Finder.
 - Let the user mount a device with one click and browse it in Finder.
 - Unmount cleanly with one click.
 - Periodically poll for new/removed devices, plus a manual **Refresh**.
-- An **About** entry: "Made by Pedro", the date, and BSD-3-Clause license.
+- An **About** entry: "Made by Pedro M. Sosa", the date, and BSD-3-Clause license.
 - Zero setup on the phone beyond enabling USB debugging.
 - Free.
 
@@ -69,7 +69,7 @@ WiFi) and mounts their filesystem so it can be browsed and edited in Finder.
 - **Unmount** → unmounts; row returns to Mount.
 - **Refresh** → immediate rescan (same code path as the timer).
 - **Auto-detect toggle** → enables/disables periodic polling (persisted).
-- **About** → small window/alert: "Made by Pedro · <date> · BSD-3-Clause".
+- **About** → small window/alert: "Made by Pedro M. Sosa · <date> · BSD-3-Clause".
 - **Quit** → unmounts everything, then exits.
 
 ### States to communicate
@@ -252,8 +252,27 @@ The `adb` check is cheap and runs at launch and before the first mount.
 `UserDefaults`:
 
 - Auto-detect on/off.
-- Discovered `adb` path (and FUSE-T availability cache).
+- Discovered `adb` path.
 - Poll interval override (if we expose one later).
+
+## 9a. Exit & cleanup (never leave a dangling volume)
+
+A dead in-app WebDAV server leaves macOS's `webdavfs_agent` holding a broken
+mount, so unmounting on exit matters. Three layers cover every exit path
+(`AppDelegate` + `MountManager.sweepStaleMounts`):
+
+- **Quit / Cmd-Q / logout / shutdown** → `applicationShouldTerminate` returns
+  `.terminateLater`, unmounts every volume, then replies to allow termination.
+- **SIGTERM / SIGINT** (`kill <pid>`, Ctrl-C) → a `DispatchSource` signal
+  handler force-unmounts all Tether volumes and removes their mount-point dirs,
+  then exits.
+- **SIGKILL / crash / power loss** (uncatchable) → the next launch runs a
+  **startup sweep**: inspect the mount table, `diskutil unmount force` any
+  leftover `~/Tether/*` volume, and `rmdir` the empty mount points.
+
+The sweep is filesystem/mount-table driven (no dependency on in-memory state),
+uses `rmdir` (empty-only, never recursive) for safety, and was verified against
+a real dangling mount produced by `kill -9`.
 
 ## 10. Security & privacy
 
@@ -282,7 +301,7 @@ The `adb` check is cheap and runs at launch and before the first mount.
 Exactly:
 
 > **Tether**
-> Made by Pedro · 2026 · BSD-3-Clause
+> Made by Pedro M. Sosa · 2026 · BSD-3-Clause
 
 (Rendered from build metadata; year/date pulled at build time.)
 
