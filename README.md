@@ -1,13 +1,29 @@
-# Tether
+<h1 align="center">Tether</h1>
+
+<p align="center">Mount your Android in Finder — over USB or WiFi, no kernel extensions.</p>
+
+<p align="center">
+  <img src="https://badgen.net/badge/platform/macOS%2026+/black" alt="platform: macOS 26+">
+  <img src="https://badgen.net/badge/Swift/5.10/orange" alt="Swift 5.10">
+  <img src="https://badgen.net/badge/version/1.0.0/green" alt="version 1.0.0">
+  <a href="LICENSE"><img src="https://badgen.net/badge/license/BSD-3-Clause/blue" alt="license: BSD-3-Clause"></a>
+  <a href="https://konukoii.com"><img src="https://badgen.net/badge/by/Pedro%20Sosa/purple" alt="by Pedro Sosa"></a>
+</p>
 
 A tiny macOS menu-bar app that mounts your Android device's filesystem into
 Finder over ADB — USB or WiFi. No kernel extension, no third-party mounting
 software, nothing to install on the phone beyond USB debugging.
 
+<p align="center">
+  <img src="screenshot.png" alt="Tether mounting an Android device's storage in Finder" width="720">
+</p>
+
 - Lives in the menu bar; auto-detects connected devices.
 - One click to **mount** a device and browse it in Finder; one click to unmount.
+- See **every storage volume** — internal storage *and* removable SD / USB cards.
 - Periodic auto-detect plus a manual **Refresh**.
 - Read, write, and delete files directly in Finder.
+- Unmounts cleanly on quit, kill, or crash — never leaves a broken volume behind.
 
 ## How it works
 
@@ -39,4 +55,4 @@ Developer-ID-signed, notarized DMG.
 
 ## License
 
-BSD-3-Clause — see [LICENSE](LICENSE). Made by Pedro M. Sosa.
+BSD-3-Clause — see [LICENSE](LICENSE). Made by [Pedro M. Sosa](https://konukoii.com).

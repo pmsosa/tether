@@ -134,7 +134,7 @@ final class WebDAVServer {
         guard let first = comps.first else { return .root }
         guard let base = volumeMap[first] else {
             // Unknown top-level name (e.g. Finder's .DS_Store probe) → 404.
-            return .device("/storage/__unknown__/" + comps.joined(separator: "/"))
+            return .device("/storage/.tether-no-such-volume/" + comps.joined(separator: "/"))
         }
         let rest = comps.dropFirst().joined(separator: "/")
         return .device(rest.isEmpty ? base : "\(base)/\(rest)")

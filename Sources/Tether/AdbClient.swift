@@ -97,9 +97,13 @@ struct AdbClient {
         var others: [StorageVolume] = []
         let result = shell("ls --color=never /storage")
         if result.ok {
+            // Skip symlinks/placeholders: `self` and `emulated` (internal, added
+            // above), and `__unknown__` (an empty stub Android creates for
+            // volumes it can't identify).
+            let skip: Set<String> = ["self", "emulated", "__unknown__"]
             for raw in result.outString.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
                 let entry = raw.trimmingCharacters(in: .whitespaces)
-                if entry.isEmpty || entry == "self" || entry == "emulated" { continue }
+                if entry.isEmpty || skip.contains(entry) { continue }
                 others.append(StorageVolume(name: "SD Card (\(entry))", path: "/storage/\(entry)"))
             }
         }
