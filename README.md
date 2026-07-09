@@ -5,9 +5,8 @@
 <p align="center">
   <img src="https://badgen.net/badge/platform/macOS%2026+/black" alt="platform: macOS 26+">
   <img src="https://badgen.net/badge/Swift/5.10/orange" alt="Swift 5.10">
-  <img src="https://badgen.net/badge/version/1.0.0/green" alt="version 1.0.0">
+  <img src="https://badgen.net/badge/version/1.0.1/green" alt="version 1.0.0">
   <a href="LICENSE"><img src="https://badgen.net/badge/license/BSD-3-Clause/blue" alt="license: BSD-3-Clause"></a>
-  <a href="https://konukoii.com"><img src="https://badgen.net/badge/by/Pedro%20Sosa/purple" alt="by Pedro Sosa"></a>
 </p>
 
 A tiny macOS menu-bar app that mounts your Android device's filesystem into
@@ -24,6 +23,13 @@ software, nothing to install on the phone beyond USB debugging.
 - Periodic auto-detect plus a manual **Refresh**.
 - Read, write, and delete files directly in Finder.
 - Unmounts cleanly on quit, kill, or crash — never leaves a broken volume behind.
+
+## Install
+
+Grab the latest signed & notarized DMG from the
+[**Releases page**](https://github.com/pmsosa/tether/releases/latest),
+open it, and drag **Tether** into Applications. Because it's Developer-ID
+signed and notarized by Apple, it runs without any Gatekeeper warnings.
 
 ## How it works
 
@@ -50,8 +56,8 @@ for the full design and the mount-engine trade-offs.
 ```
 
 Tether is **not** distributed via the Mac App Store: it spawns `adb` and
-`mount_webdav`, which the App Store sandbox forbids. Distribution is via a
-Developer-ID-signed, notarized DMG.
+`mount_webdav`, which the App Store sandbox forbids. Instead it ships as a
+Developer-ID-signed, notarized DMG — see [Install](#install) above to download it.
 
 ## License
 
